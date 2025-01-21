@@ -1,0 +1,63 @@
+// MiniLLM.java
+// Purpose: Demonstrates a mini-scale LLM using DL4J for educational purposes
+
+import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
+import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
+import org.deeplearning4j.nn.conf.layers.DenseLayer;
+import org.deeplearning4j.nn.conf.layers.OutputLayer;
+import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
+import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
+import org.nd4j.linalg.activations.Activation;
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.dataset.DataSet;
+import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.learning.config.Adam;
+import org.nd4j.linalg.lossfunctions.LossFunctions;
+
+public class MiniLLM {
+    public static void main(String[] args) {
+        // 1. Define vocabulary and embedding size
+        int vocabSize = 100; // Simulated vocabulary
+        int embeddingSize = 50;
+
+        // 2. Create a simple neural network
+        MultiLayerConfiguration config = new NeuralNetConfiguration.Builder()
+                .updater(new Adam(0.001)) // Learning rate
+                .list()
+                .layer(new DenseLayer.Builder()
+                        .nIn(vocabSize)
+                        .nOut(embeddingSize)
+                        .activation(Activation.RELU)
+                        .build())
+                .layer(new DenseLayer.Builder()
+                        .nIn(embeddingSize)
+                        .nOut(embeddingSize)
+                        .activation(Activation.RELU)
+                        .build())
+                .layer(new OutputLayer.Builder(LossFunctions.LossFunction.MSE)
+                        .nIn(embeddingSize)
+                        .nOut(vocabSize)
+                        .activation(Activation.SOFTMAX)
+                        .build())
+                .build();
+
+        MultiLayerNetwork model = new MultiLayerNetwork(config);
+        model.init();
+        model.setListeners(new ScoreIterationListener(10));
+
+        // 3. Generate dummy training data
+        INDArray input = Nd4j.rand(new int[]{10, vocabSize}); // Simulated tokenized input
+        INDArray output = Nd4j.rand(new int[]{10, vocabSize}); // Simulated next-token output
+        DataSet dataset = new DataSet(input, output);
+
+        // 4. Train the model
+        for (int i = 0; i < 100; i++) {
+            model.fit(dataset);
+        }
+
+        // 5. Inference
+        INDArray testInput = Nd4j.rand(new int[]{1, vocabSize});
+        INDArray prediction = model.output(testInput);
+        System.out.println("Prediction: " + prediction);
+    }
+}
