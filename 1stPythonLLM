@@ -1,1 +1,122 @@
+import numpy as np
 
+# Activation function interface
+class ActivationFunction:
+    def activate(self, x):
+        raise NotImplementedError
+
+    def derivative(self, x):
+        raise NotImplementedError
+
+# ReLU activation function
+class ReLU(ActivationFunction):
+    def activate(self, x):
+        return np.maximum(0, x)
+
+    def derivative(self, x):
+        return np.where(x > 0, 1, 0)
+
+# Sigmoid activation function
+class Sigmoid(ActivationFunction):
+    def activate(self, x):
+        return 1.0 / (1.0 + np.exp(-x))
+
+    def derivative(self, x):
+        sig = self.activate(x)
+        return sig * (1 - sig)
+
+# Layer class
+class Layer:
+    def __init__(self, input_size, output_size, activation_function, dropout_rate):
+        self.input_size = input_size
+        self.output_size = output_size
+        self.activation_function = activation_function
+        self.dropout_rate = dropout_rate
+        self.weights = np.random.randn(output_size, input_size) * 0.01
+        self.biases = np.random.randn(output_size) * 0.01
+        self.training = True
+
+    def forward(self, input_data):
+        self.inputs = input_data
+        self.outputs = np.dot(self.weights, input_data) + self.biases
+        self.outputs = self.activation_function.activate(self.outputs)
+
+        # Apply dropout during training
+        if self.training:
+            self.dropout_mask = np.random.rand(self.output_size) > self.dropout_rate
+            self.outputs *= self.dropout_mask
+        return self.outputs
+
+    def backward(self, output_error, learning_rate):
+        delta = output_error * self.activation_function.derivative(self.outputs)
+        input_error = np.dot(self.weights.T, delta)
+
+        # Update weights and biases
+        self.weights -= learning_rate * np.outer(delta, self.inputs)
+        self.biases -= learning_rate * delta
+        return input_error
+
+    def set_training(self, training):
+        self.training = training
+
+# Neural Network class
+class NeuralNetwork:
+    def __init__(self, layer_sizes, activation_functions, dropout_rate):
+        self.layers = []
+        for i in range(len(layer_sizes) - 1):
+            self.layers.append(Layer(layer_sizes[i], layer_sizes[i + 1], activation_functions[i], dropout_rate))
+
+    def predict(self, input_data):
+        for layer in self.layers:
+            input_data = layer.forward(input_data)
+        return input_data
+
+    def train(self, training_data, target_data, epochs, learning_rate, validation_split):
+        num_training_samples = int(len(training_data) * (1 - validation_split))
+        for epoch in range(epochs):
+            for i in range(num_training_samples):
+                output = self.predict(training_data[i])
+                output_error = target_data[i] - output
+                self.backpropagate(output_error, learning_rate)
+
+            # Validate the model after each epoch
+            validation_loss = self.validate(training_data, target_data, num_training_samples)
+            print(f"Epoch {epoch + 1}, Validation Loss: {validation_loss:.4f}")
+
+    def backpropagate(self, output_error, learning_rate):
+        for layer in reversed(self.layers):
+            output_error = layer.backward(output_error, learning_rate)
+
+    def validate(self, validation_data, target_data, num_training_samples):
+        total_loss = 0
+        for i in range(num_training_samples, len(validation_data)):
+            output = self.predict(validation_data[i])
+            total_loss += np.sum((target_data[i] - output) ** 2)  # Mean Squared Error
+        return total_loss / (len(validation_data) - num_training_samples)
+
+# Main function
+if __name__ == "__main__":
+    # Define the structure of the neural network
+    layer_sizes = [100, 50, 50, 100]  # Input layer, two hidden layers, output layer
+    activation_functions = [ReLU(), ReLU(), Sigmoid()]
+    dropout_rate = 0.2  # 20% dropout rate
+
+    # Create the neural network
+    nn = NeuralNetwork(layer_sizes, activation_functions, dropout_rate)
+
+    # Generate dummy training data
+    num_samples = 1000
+    data = np.random.rand(num_samples, 100)  # 100 features
+    target_data = np.random.rand(num_samples, 100)  # 100 target outputs
+
+    # Train the neural network
+    epochs = 1000
+    learning_rate = 0.01
+    validation_split = 0.2  # 20% for validation
+
+    nn.train(data, target_data, epochs, learning_rate, validation_split)
+
+    # Test the neural network with a sample input
+    test_input = np.random.rand(100)  # Random test input
+    prediction = nn.predict(test_input)
+    print("Prediction:", prediction)
