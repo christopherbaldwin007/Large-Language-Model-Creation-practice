@@ -1,0 +1,197 @@
+
+import java.util.Arrays;
+import java.util.Random;
+
+public class MiniLLM {
+    // Activation function interface
+    interface ActivationFunction {
+        double activate(double x);
+        double derivative(double x);
+    }
+
+    // ReLU activation function
+    static class ReLU implements ActivationFunction {
+        public double activate(double x) {
+            return Math.max(0, x);
+        }
+
+        public double derivative(double x) {
+            return x > 0 ? 1 : 0;
+        }
+    }
+
+    // Sigmoid activation function
+    static class Sigmoid implements ActivationFunction {
+        public double activate(double x) {
+            return 1.0 / (1.0 + Math.exp(-x));
+        }
+
+        public double derivative(double x) {
+            return activate(x) * (1 - activate(x));
+        }
+    }
+
+    // Layer class
+    static class Layer {
+        int inputSize;
+        int outputSize;
+        double[][] weights;
+        double[] biases;
+        double[] outputs;
+        double[] inputs;
+        ActivationFunction activationFunction;
+        double dropoutRate;
+        boolean training;
+
+        Layer(int inputSize, int outputSize, ActivationFunction activationFunction, double dropoutRate) {
+            this.inputSize = inputSize;
+            this.outputSize = outputSize;
+            this.activationFunction = activationFunction;
+            this.dropoutRate = dropoutRate;
+            this.weights = new double[outputSize][inputSize];
+            this.biases = new double[outputSize];
+            initializeWeights();
+        }
+
+        void initializeWeights() {
+            Random rand = new Random();
+            for (int i = 0; i < outputSize; i++) {
+                for (int j = 0; j < inputSize; j++) {
+                    weights[i][j] = rand.nextGaussian() * 0.01; // Small random values
+                }
+                biases[i] = rand.nextGaussian() * 0.01;
+            }
+        }
+
+        double[] forward(double[] input) {
+            this.inputs = input;
+            outputs = new double[outputSize];
+            for (int i = 0; i < outputSize; i++) {
+                outputs[i] = biases[i];
+                for (int j = 0; j < inputSize; j++) {
+                    outputs[i] += weights[i][j] * input[j];
+                }
+                outputs[i] = activationFunction.activate(outputs[i]);
+                // Apply dropout during training
+                if (training && Math.random() < dropoutRate) {
+                    outputs[i] = 0; // Dropout
+                }
+            }
+            return outputs;
+        }
+
+        double[] backward(double[] outputError, double learningRate) {
+            double[] inputError = new double[inputSize];
+            for (int i = 0; i < outputSize; i++) {
+                double delta = outputError[i] * activationFunction.derivative(outputs[i]);
+                for (int j = 0; j < inputSize; j++) {
+                    inputError[j] += weights[i][j] * delta;
+                    weights[i][j] -= learningRate * delta * inputs[j];
+                }
+                biases[i] -= learningRate * delta;
+            }
+            return inputError;
+        }
+
+        void setTraining(boolean training) {
+            this.training = training;
+        }
+    }
+
+    // Neural Network class
+    static class NeuralNetwork {
+        Layer[] layers;
+
+        NeuralNetwork(int[] layerSizes, ActivationFunction[] activationFunctions, double dropoutRate) {
+            layers = new Layer[layerSizes.length - 1];
+            for (int i = 0; i < layers.length; i++) {
+                layers[i] = new Layer(layerSizes[i], layerSizes[i + 1], activationFunctions[i], dropoutRate);
+            }
+        }
+
+        double[] predict(double[] input) {
+            for (Layer layer : layers) {
+                input = layer.forward(input);
+            }
+            return input;
+        }
+
+        void train(double[][] trainingData, double[][] targetData, int epochs, double learningRate, double validationSplit) {
+            int numTrainingSamples = (int) (trainingData.length * (1 - validationSplit));
+            for (int epoch = 0; epoch < epochs; epoch++) {
+                for (int i = 0; i < numTrainingSamples; i++) {
+                                        double[] output = predict(trainingData[i]);
+                    double[] outputError = new double[targetData[i].length];
+                    for (int j = 0; j < targetData[i].length; j++) {
+                        outputError[j] = targetData[i][j] - output[j];
+                    }
+                    backpropagate(outputError, learningRate);
+                }
+
+                // Validate the model after each epoch
+                double validationLoss = validate(trainingData, targetData, numTrainingSamples);
+                System.out.println("Epoch " + (epoch + 1) + ", Validation Loss: " + validationLoss);
+            }
+        }
+
+        void backpropagate(double[] outputError, double learningRate) {
+            // Backpropagate the error through the layers in reverse order
+            for (int i = layers.length - 1; i >= 0; i--) {
+                outputError = layers[i].backward(outputError, learningRate);
+            }
+        }
+
+        double validate(double[][] validationData, double[][] targetData, int numTrainingSamples) {
+            double totalLoss = 0;
+            for (int i = numTrainingSamples; i < validationData.length; i++) {
+                double[] output = predict(validationData[i]);
+                for (int j = 0; j < targetData[i].length; j++) {
+                    double error = targetData[i][j] - output[j];
+                    totalLoss += error * error; // Mean Squared Error
+                }
+            }
+            return totalLoss / (validationData.length - numTrainingSamples);
+        }
+    }
+
+    public static void main(String[] args) {
+        // Define the structure of the neural network
+        int[] layerSizes = {100, 50, 50, 100}; // Input layer, two hidden layers, output layer
+        ActivationFunction[] activationFunctions = {new ReLU(), new ReLU(), new Sigmoid()};
+        double dropoutRate = 0.2; // 20% dropout rate
+
+        // Create the neural network
+        NeuralNetwork nn = new NeuralNetwork(layerSizes, activationFunctions, dropoutRate);
+
+        // Generate dummy training data
+        int numSamples = 1000;
+        double[][] data = new double[numSamples][100]; // 100 features
+        double[][] targetData = new double[numSamples][100]; // 100 target outputs
+
+        Random rand = new Random();
+        for (int i = 0; i < numSamples; i++) {
+            for (int j = 0; j < 100; j++) {
+                data[i][j] = rand.nextDouble(); // Random input
+                targetData[i][j] = rand.nextDouble(); // Random target output
+            }
+        }
+
+        // Split data into training and validation sets
+        double validationSplit = 0.2; // 20% for validation
+        int numTrainingSamples = (int) (numSamples * (1 - validationSplit));
+
+        // Train the neural network
+        int epochs = 1000;
+        double learningRate = 0.01;
+        nn.train(data, targetData, epochs, learningRate, validationSplit);
+
+        // Test the neural network with a sample input
+        double[] testInput = new double[100];
+        for (int i = 0; i < 100; i++) {
+            testInput[i] = rand.nextDouble(); // Random test input
+        }
+
+        double[] prediction = nn.predict(testInput);
+        System.out.println("Prediction: " + Arrays.toString(prediction));
+    }
+}
